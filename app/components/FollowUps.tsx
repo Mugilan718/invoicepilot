@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { InvoicesResponse, InvoiceWithAging, ReminderDraft, ReminderTier } from "@/lib/types";
 
 type ReminderState = "editing" | "sending" | "sent" | "skipped";
@@ -68,49 +68,19 @@ export default function FollowUps() {
   // Bumped by "Refresh"/"Try again" to refetch.
   const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/invoices", { cache: "no-store" })
-      .then((res) => readJson<InvoicesResponse>(res))
-      .then((d) => {
-        if (cancelled) return;
-        setData(d);
-        setLoadError(null);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setLoadError(friendlyError(err, "Couldn't load invoices."));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
+  // `?invoice=<id>` (from the dashboard's "Draft reminder" action): highlight that invoice
+  // and draft a reminder for just that one. Only rendered after data loads, so no hydration mismatch.
+  const [focusId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("invoice")
+  );
+  const autoDrafted = useRef(false);
 
-  const load = () => {
-    setLoading(true);
-    setLoadError(null);
-    setReloadKey((k) => k + 1);
-  };
-
-  const overdue = (data?.invoices ?? [])
-    .filter((i) => i.overdue)
-    .sort((a, b) => b.daysOverdue - a.daysOverdue);
-  const upcoming = (data?.invoices ?? [])
-    .filter((i) => !i.overdue && ["SENT", "UNPAID", "PARTIALLY_PAID"].includes(i.status))
-    .sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"));
-  const outstanding = overdue.reduce((s, i) => s + i.amountDue, 0);
-
-  async function draftAll() {
+  /** Drafts reminders for the given invoice ids (one Gemini call) and merges them into state. */
+  const draftIds = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
     setDrafting(true);
     setDraftError(null);
     try {
-      // Only (re)draft invoices that haven't been sent or skipped yet.
-      const ids = overdue
-        .filter((i) => !["sent", "sending", "skipped"].includes(reminders[i.id]?.state ?? ""))
-        .map((i) => i.id);
-      if (ids.length === 0) return;
       const res = await fetch("/api/reminders/draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -129,7 +99,62 @@ export default function FollowUps() {
     } finally {
       setDrafting(false);
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/invoices", { cache: "no-store" })
+      .then((res) => readJson<InvoicesResponse>(res))
+      .then((d) => {
+        if (cancelled) return;
+        setData(d);
+        setLoadError(null);
+        if (focusId && !autoDrafted.current && d.invoices.some((i) => i.id === focusId && i.overdue)) {
+          autoDrafted.current = true;
+          void draftIds([focusId]);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(friendlyError(err, "Couldn't load invoices."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey, focusId, draftIds]);
+
+  // Bring the focused invoice into view once it's rendered.
+  useEffect(() => {
+    if (focusId && data) {
+      document.getElementById(`invoice-${focusId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [focusId, data]);
+
+  const load = () => {
+    setLoading(true);
+    setLoadError(null);
+    setReloadKey((k) => k + 1);
+  };
+
+  const overdue = (data?.invoices ?? [])
+    .filter((i) => i.overdue)
+    .sort((a, b) => b.daysOverdue - a.daysOverdue);
+  const upcoming = (data?.invoices ?? [])
+    .filter((i) => !i.overdue && ["SENT", "UNPAID", "PARTIALLY_PAID"].includes(i.status))
+    .sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"));
+  const outstanding = overdue.reduce((s, i) => s + i.amountDue, 0);
+
+  function draftAll() {
+    // Only (re)draft invoices that haven't been sent or skipped yet.
+    const ids = overdue
+      .filter((i) => !["sent", "sending", "skipped"].includes(reminders[i.id]?.state ?? ""))
+      .map((i) => i.id);
+    void draftIds(ids);
   }
+
+  const focusNotOverdue = !!(data && focusId && !overdue.some((i) => i.id === focusId));
 
   const patch = (id: string, p: Partial<ReminderUI>) =>
     setReminders((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], ...p } } : prev));
@@ -182,7 +207,7 @@ export default function FollowUps() {
             {overdue.length > 0 && (
               <button
                 type="button"
-                onClick={() => void draftAll()}
+                onClick={draftAll}
                 disabled={drafting || loading || !hasPendingDrafts}
                 className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-50"
               >
@@ -194,6 +219,11 @@ export default function FollowUps() {
         </div>
 
         {draftError && <ErrorBox>{draftError}</ErrorBox>}
+        {focusNotOverdue && (
+          <p className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
+            That invoice isn&apos;t overdue anymore, so there&apos;s nothing to chase.
+          </p>
+        )}
 
         {/* States */}
         {loading && !data && <SkeletonList />}
@@ -228,6 +258,7 @@ export default function FollowUps() {
                 key={inv.id}
                 invoice={inv}
                 reminder={reminders[inv.id]}
+                highlighted={inv.id === focusId}
                 onChange={(p) => patch(inv.id, p)}
                 onSend={() => void sendReminder(inv.id)}
                 onSkip={() => patch(inv.id, { state: "skipped", error: undefined })}
@@ -265,12 +296,14 @@ export default function FollowUps() {
 function OverdueCard({
   invoice,
   reminder,
+  highlighted,
   onChange,
   onSend,
   onSkip,
   onUndoSkip,
 }: {
   invoice: InvoiceWithAging;
+  highlighted?: boolean;
   reminder?: ReminderUI;
   onChange: (p: Partial<ReminderUI>) => void;
   onSend: () => void;
@@ -281,7 +314,14 @@ function OverdueCard({
   const sending = reminder?.state === "sending";
 
   return (
-    <li className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <li
+      id={`invoice-${invoice.id}`}
+      className={`scroll-mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-zinc-900 ${
+        highlighted
+          ? "border-indigo-400 ring-2 ring-indigo-500/30 dark:border-indigo-500"
+          : "border-zinc-200 dark:border-zinc-800"
+      }`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
           <p className="truncate text-base font-semibold">{clientName(invoice)}</p>

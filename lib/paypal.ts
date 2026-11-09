@@ -68,6 +68,11 @@ export interface PayPalInvoice {
   }[];
   amount?: Money;
   due_amount?: Money;
+  payments?: {
+    paid_amount?: Money;
+    /** Only returned by GET /invoices/{id}, not by the list endpoint. */
+    transactions?: { payment_date?: string; amount?: Money }[];
+  };
   [key: string]: unknown;
 }
 
@@ -92,8 +97,16 @@ async function readErrorBody(res: Response): Promise<string> {
   }
 }
 
+/** Cached OAuth token (per server process), keyed by client id so a credential change refetches. */
+let tokenCache: { clientId: string; token: string; expiresAt: number } | null = null;
+/** Refresh this long before PayPal's stated expiry. */
+const TOKEN_EXPIRY_MARGIN_MS = 60_000;
+
 export async function getAccessToken(): Promise<string> {
   const { clientId, clientSecret } = getCredentials();
+  if (tokenCache && tokenCache.clientId === clientId && Date.now() < tokenCache.expiresAt) {
+    return tokenCache.token;
+  }
   const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
   const res = await fetch(`${PAYPAL_BASE_URL}/v1/oauth2/token`, {
@@ -113,10 +126,15 @@ export async function getAccessToken(): Promise<string> {
     );
   }
 
-  const data = (await res.json()) as { access_token?: string };
+  const data = (await res.json()) as { access_token?: string; expires_in?: number };
   if (!data.access_token) {
     throw new Error("PayPal auth response did not include an access_token.");
   }
+  const lifetimeMs = (data.expires_in ?? 0) * 1000;
+  tokenCache =
+    lifetimeMs > TOKEN_EXPIRY_MARGIN_MS
+      ? { clientId, token: data.access_token, expiresAt: Date.now() + lifetimeMs - TOKEN_EXPIRY_MARGIN_MS }
+      : null;
   return data.access_token;
 }
 
@@ -238,6 +256,30 @@ export async function remindInvoice(
   );
 }
 
+/**
+ * Records a payment received outside PayPal (e.g. bank transfer). The invoice becomes
+ * MARKED_AS_PAID when fully paid. Used by the seed script to build payment history.
+ */
+export async function recordPayment(
+  id: string,
+  { amount, paymentDate, method = "BANK_TRANSFER", note }: { amount: number; paymentDate: string; method?: string; note?: string }
+): Promise<void> {
+  if (!DATE_RE.test(paymentDate)) throw new Error(`recordPayment: paymentDate must be YYYY-MM-DD (got "${paymentDate}").`);
+  await paypalRequest(
+    `/v2/invoicing/invoices/${encodeURIComponent(id)}/payments`,
+    {
+      method: "POST",
+      body: {
+        method,
+        payment_date: paymentDate,
+        amount: { currency_code: "USD", value: amount.toFixed(2) },
+        ...(note ? { note } : {}),
+      },
+    },
+    "record payment"
+  );
+}
+
 /** Deletes a DRAFT invoice (used by the seed script to clean up failed attempts). */
 export async function deleteInvoice(id: string): Promise<void> {
   await paypalRequest(
@@ -256,6 +298,10 @@ export function normalizeInvoice(inv: PayPalInvoice): InvoiceRecord {
     null;
   const total = inv.amount?.value ? Number(inv.amount.value) : 0;
   const due = inv.due_amount?.value ? Number(inv.due_amount.value) : total;
+  const paidDates = (inv.payments?.transactions ?? [])
+    .map((t) => t.payment_date)
+    .filter((d): d is string => !!d && DATE_RE.test(d))
+    .sort();
   return {
     id: inv.id,
     number: inv.detail?.invoice_number ?? null,
@@ -264,16 +310,55 @@ export function normalizeInvoice(inv: PayPalInvoice): InvoiceRecord {
     recipientEmail: billing?.email_address ?? null,
     total,
     amountDue: due,
+    amountPaid: inv.payments?.paid_amount?.value ? Number(inv.payments.paid_amount.value) : 0,
     currency: inv.amount?.currency_code ?? inv.detail?.currency_code ?? "USD",
     dueDate: inv.detail?.payment_term?.due_date ?? null,
     invoiceDate: inv.detail?.invoice_date ?? null,
+    paidDate: paidDates.length ? paidDates[paidDates.length - 1] : null,
   };
 }
 
 const LIST_PAGE_SIZE = 100;
 const LIST_MAX_PAGES = 10;
+/** Parallel GET /invoices/{id} calls when looking up payment dates. */
+const DETAIL_CONCURRENCY = 5;
+/** Upper bound on payment-date lookups per list call, to keep latency predictable. */
+const MAX_DETAIL_LOOKUPS = 60;
+const FULLY_PAID = new Set(["PAID", "MARKED_AS_PAID"]);
 
-/** All invoices for this merchant (newest first), up to 1,000. */
+/**
+ * Last payment date for fully paid invoices. Paid invoices rarely change, so results are
+ * cached for the life of the server process.
+ */
+const paidDateCache = new Map<string, string | null>();
+
+/**
+ * The list endpoint returns only `paid_amount`, not payment dates, so fetch details for
+ * invoices that have payments (in small parallel batches) and fill in `paidDate`.
+ */
+async function addPaymentDates(records: InvoiceRecord[]): Promise<void> {
+  const needed = records.filter((r) => r.amountPaid > 0 && !r.paidDate);
+  for (const r of needed) {
+    if (paidDateCache.has(r.id)) r.paidDate = paidDateCache.get(r.id) ?? null;
+  }
+  const toFetch = needed.filter((r) => !paidDateCache.has(r.id)).slice(0, MAX_DETAIL_LOOKUPS);
+  for (let i = 0; i < toFetch.length; i += DETAIL_CONCURRENCY) {
+    await Promise.all(
+      toFetch.slice(i, i + DETAIL_CONCURRENCY).map(async (r) => {
+        try {
+          const paidDate = normalizeInvoice(await getInvoice(r.id)).paidDate;
+          r.paidDate = paidDate;
+          if (FULLY_PAID.has(r.status)) paidDateCache.set(r.id, paidDate);
+        } catch (err) {
+          // Non-fatal: the invoice still shows, just without a payment date.
+          console.warn(`[paypal] payment date lookup failed for ${r.id}: ${err instanceof Error ? err.message : err}`);
+        }
+      })
+    );
+  }
+}
+
+/** All invoices for this merchant (newest first), up to 1,000, with payment dates where paid. */
 export async function listInvoices(): Promise<InvoiceRecord[]> {
   const all: InvoiceRecord[] = [];
   for (let page = 1; page <= LIST_MAX_PAGES; page++) {
@@ -288,5 +373,6 @@ export async function listInvoices(): Promise<InvoiceRecord[]> {
     all.push(...items.map(normalizeInvoice));
     if (items.length < LIST_PAGE_SIZE || (data.total_pages !== undefined && page >= data.total_pages)) break;
   }
+  await addPaymentDates(all);
   return all;
 }

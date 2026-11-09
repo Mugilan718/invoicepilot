@@ -1,8 +1,6 @@
 import { daysBetween, getToday } from "@/lib/demo-clock";
+import { OPEN_STATUSES } from "@/lib/stats";
 import type { InvoiceRecord, InvoiceWithAging, ReminderTier } from "@/lib/types";
-
-/** Statuses where money is still owed and a reminder makes sense. */
-export const OPEN_STATUSES = new Set(["SENT", "UNPAID", "PARTIALLY_PAID"]);
 
 export function tierFor(daysOverdue: number): ReminderTier | null {
   if (daysOverdue <= 0) return null;

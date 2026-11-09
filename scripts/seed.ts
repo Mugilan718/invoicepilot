@@ -1,7 +1,10 @@
-// Seeds the PayPal SANDBOX with demo invoices for the Follow-ups view.
+// Seeds the PayPal SANDBOX with demo invoices for the Follow-ups view and Dashboard.
 //
-//   npm run seed            try real past due dates first, fall back to future dates + DEMO_TODAY
+//   npm run seed               open invoices (overdue + not yet due); tries real past due dates first,
+//                              falls back to future dates + DEMO_TODAY
 //   npm run seed -- --future   skip the past-date attempt
+//   npm run seed:history       past invoices with recorded payments (on time and late), for the
+//                              dashboard's "Paid (last 30 days)" and payment-reliability stats
 //
 // Runs directly with Node's built-in TypeScript support; env comes from .env.local.
 // Every run creates NEW invoices (sandbox only).
@@ -12,6 +15,7 @@ import {
   PayPalError,
   createDraftInvoice,
   deleteInvoice,
+  recordPayment,
   sendInvoice,
   type InvoiceItemInput,
 } from "../lib/paypal.ts";
@@ -41,6 +45,24 @@ const SPECS: SeedSpec[] = [
     dueOffset: -40,
   },
   { client: "Bloom Bakery", items: [{ name: "Product photography session", quantity: 1, unitAmount: 900 }], dueOffset: 10 },
+];
+
+interface HistorySpec extends SeedSpec {
+  /** Payment date relative to the real today (negative = days ago). */
+  paidOffset: number;
+}
+
+// Shapes the reliability labels: Acme pays late (Often late), Bloom pays on time (Reliable),
+// Nova is usually on time but has one very late invoice (Sometimes late).
+const HISTORY_SPECS: HistorySpec[] = [
+  { client: "Acme Corp", items: [{ name: "Email newsletter template", quantity: 1, unitAmount: 500 }], dueOffset: -50, paidOffset: -40 },
+  { client: "Acme Corp", items: [{ name: "Banner ad set", quantity: 1, unitAmount: 275 }], dueOffset: -25, paidOffset: -26 },
+  { client: "Bloom Bakery", items: [{ name: "Logo refresh", quantity: 1, unitAmount: 300 }], dueOffset: -70, paidOffset: -72 },
+  { client: "Bloom Bakery", items: [{ name: "Seasonal flyer design", quantity: 1, unitAmount: 420 }], dueOffset: -40, paidOffset: -41 },
+  { client: "Bloom Bakery", items: [{ name: "Instagram post pack", quantity: 1, unitAmount: 360 }], dueOffset: -12, paidOffset: -14 },
+  { client: "Nova Studio", items: [{ name: "Website wireframes", quantity: 1, unitAmount: 1200 }], dueOffset: -100, paidOffset: -101 },
+  { client: "Nova Studio", items: [{ name: "UI kit", quantity: 1, unitAmount: 1500 }], dueOffset: -60, paidOffset: -62 },
+  { client: "Nova Studio", items: [{ name: "Pitch deck design", quantity: 1, unitAmount: 950 }], dueOffset: -28, paidOffset: -29 },
 ];
 
 /** In future mode, the demo "today" is this many days ahead, so every due date is still in the future. */
@@ -115,11 +137,35 @@ function explain(err: unknown): string {
   return msg;
 }
 
+/** Creates, sends and marks as paid a set of past invoices (real past dates, no demo clock). */
+async function seedHistory(emails: Map<string, string>) {
+  const realToday = localIsoDate(new Date());
+  console.log(`Creating ${HISTORY_SPECS.length} paid invoices with payment history...`);
+  for (const spec of HISTORY_SPECS) {
+    const email = emails.get(spec.client);
+    if (!email) throw new Error(`Client "${spec.client}" is not in data/clients.json.`);
+    const due = addDays(realToday, spec.dueOffset);
+    const paidOn = addDays(realToday, spec.paidOffset);
+    const c = await createAndSend(spec, email, due, addDays(due, -30));
+    await recordPayment(c.id, { amount: total(spec.items), paymentDate: paidOn, note: "Seeded payment history" });
+    const late = spec.paidOffset - spec.dueOffset;
+    console.log(
+      `  paid ${(c.number ?? c.id).padEnd(6)} ${spec.client.padEnd(13)} ${money(total(spec.items)).padStart(10)}` +
+        `  due ${due}  paid ${paidOn}  (${late > 0 ? `${late} days late` : "on time"})`
+    );
+  }
+  console.log("\nDone. Open the Dashboard to see payment history and reliability.");
+}
+
 async function main() {
   if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) {
     throw new Error("Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in .env.local first.");
   }
   const emails = loadClientEmails();
+  if (process.argv.includes("--history")) {
+    await seedHistory(emails);
+    return;
+  }
   const realToday = localIsoDate(new Date());
   const created: Created[] = [];
 

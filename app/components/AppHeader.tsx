@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/", label: "Create" },
   { href: "/follow-ups", label: "Follow-ups" },
+  { href: "/dashboard", label: "Dashboard" },
 ];
 
 function prettyDate(iso: string) {
@@ -23,7 +24,7 @@ export default function AppHeader({ demoToday }: { demoToday: string | null }) {
 
   return (
     <header className="shrink-0 border-b border-zinc-200 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80">
-      <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 pt-3 pb-2 sm:pb-3">
+      <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 pt-3 pb-2 sm:pb-3">
         <Link href="/" className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5" aria-hidden>
@@ -54,7 +55,7 @@ export default function AppHeader({ demoToday }: { demoToday: string | null }) {
         </div>
       </div>
 
-      <nav className="mx-auto flex max-w-3xl gap-1 px-4 pb-2" aria-label="Main">
+      <nav className="mx-auto flex max-w-6xl gap-1 px-4 pb-2" aria-label="Main">
         {TABS.map((tab) => {
           const active = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
           return (

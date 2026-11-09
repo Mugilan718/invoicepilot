@@ -24,3 +24,57 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+/* ---------- AG Grid: conditional styling (rowClassRules / cellClassRules) ---------- */
+.ag-row.ip-row-overdue {
+  background-color: #fef2f2; /* red-50 */
+}
+.ag-row.ip-row-overdue.ag-row-hover {
+  background-color: #fee2e2; /* red-100 */
+}
+.ag-row.ip-row-overdue .ag-cell[col-id="number"] {
+  box-shadow: inset 3px 0 0 #ef4444; /* red-500 urgency stripe */
+}
+.ag-row.ip-row-muted .ag-cell {
+  color: #71717a; /* zinc-500 */
+}
+.ag-row.ip-row-total {
+  background-color: #f4f4f5; /* zinc-100 */
+  font-weight: 600;
+}
+.ip-days-friendly {
+  color: #047857; /* emerald-700 */
+  font-weight: 600;
+}
+.ip-days-firm {
+  color: #b45309; /* amber-700 */
+  font-weight: 600;
+}
+.ip-days-final {
+  color: #b91c1c; /* red-700 */
+  font-weight: 700;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ag-row.ip-row-overdue {
+    background-color: rgb(239 68 68 / 0.08);
+  }
+  .ag-row.ip-row-overdue.ag-row-hover {
+    background-color: rgb(239 68 68 / 0.14);
+  }
+  .ag-row.ip-row-muted .ag-cell {
+    color: #a1a1aa; /* zinc-400 */
+  }
+  .ag-row.ip-row-total {
+    background-color: #1c1c20;
+  }
+  .ip-days-friendly {
+    color: #6ee7b7; /* emerald-300 */
+  }
+  .ip-days-firm {
+    color: #fcd34d; /* amber-300 */
+  }
+  .ip-days-final {
+    color: #fca5a5; /* red-300 */
+  }
+}

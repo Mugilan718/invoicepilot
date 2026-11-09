@@ -1,0 +1,126 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { Insight, InsightsResponse } from "@/lib/types";
+
+const PRIORITY: Record<Insight["priority"], { dot: string; label: string }> = {
+  high: { dot: "bg-red-500", label: "Act now" },
+  medium: { dot: "bg-amber-500", label: "Worth doing" },
+  low: { dot: "bg-emerald-500", label: "Good to know" },
+};
+
+export default function InsightsPanel({ disabled }: { disabled?: boolean }) {
+  const [result, setResult] = useState<InsightsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loading) return;
+    const t = setTimeout(() => setSlow(true), 5000);
+    return () => {
+      clearTimeout(t);
+      setSlow(false);
+    };
+  }, [loading]);
+
+  async function generate() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/insights", { method: "POST" });
+      const data = (await res.json().catch(() => null)) as (InsightsResponse & { error?: string }) | null;
+      if (!res.ok || !data || data.error) throw new Error(data?.error || `Request failed (${res.status}).`);
+      setResult(data);
+    } catch (err) {
+      setError(
+        err instanceof TypeError
+          ? "Couldn't reach the server. Check your connection and try again."
+          : err instanceof Error
+            ? err.message
+            : "Couldn't generate insights."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-indigo-500" aria-hidden>
+              <path d="M12 2l1.8 5.4L19 9l-5.2 1.6L12 16l-1.8-5.4L5 9l5.2-1.6L12 2Zm6 12 .9 2.6L21.5 17l-2.6.9L18 20.5l-.9-2.6-2.6-.9 2.6-.9L18 14Z" />
+            </svg>
+            AI insights
+          </h2>
+          <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+            Gemini reviews your invoice stats (amounts, dates and client names only) and suggests next steps.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void generate()}
+          disabled={loading || disabled}
+          className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-50"
+        >
+          {loading && (
+            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity={0.25} strokeWidth={4} />
+              <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" strokeWidth={4} strokeLinecap="round" />
+            </svg>
+          )}
+          {loading ? "Analyzing…" : result ? "Regenerate" : "Generate insights"}
+        </button>
+      </div>
+
+      {error && (
+        <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+          {error}
+        </p>
+      )}
+
+      {loading && (
+        <div className="mt-4 flex flex-col gap-2" role="status">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-14 animate-pulse rounded-xl bg-zinc-100 dark:bg-zinc-800" />
+          ))}
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            {slow ? "Still working, the AI service is busy..." : "Looking for patterns in your invoices..."}
+          </p>
+        </div>
+      )}
+
+      {!loading && result && (
+        <>
+          <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+            {result.insights.map((ins, i) => (
+              <li key={i} className="rounded-xl border border-zinc-200 bg-zinc-50/60 p-3 dark:border-zinc-800 dark:bg-zinc-950/40">
+                <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  <span className={`h-2 w-2 rounded-full ${PRIORITY[ins.priority].dot}`} aria-hidden />
+                  {PRIORITY[ins.priority].label}
+                  {ins.client && <span className="normal-case tracking-normal text-zinc-400">· {ins.client}</span>}
+                </div>
+                <p className="mt-1 text-sm font-semibold">{ins.title}</p>
+                <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-300">{ins.detail}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-[11px] text-zinc-400 dark:text-zinc-500">
+            Generated by {result.model} at{" "}
+            {new Date(result.generatedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}. AI can
+            make mistakes; numbers above the grid are computed directly from PayPal.
+          </p>
+        </>
+      )}
+
+      {!loading && !result && !error && (
+        <p className="mt-4 rounded-xl border border-dashed border-zinc-300 px-4 py-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+          Click <span className="font-medium text-zinc-700 dark:text-zinc-200">Generate insights</span> for 3-4 specific
+          suggestions. Nothing is sent to the AI until you do.
+        </p>
+      )}
+    </section>
+  );
+}

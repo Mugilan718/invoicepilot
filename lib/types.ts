@@ -32,11 +32,14 @@ export interface InvoiceRecord {
   recipientEmail: string | null;
   total: number;
   amountDue: number;
+  amountPaid: number;
   currency: string;
   /** YYYY-MM-DD */
   dueDate: string | null;
   /** YYYY-MM-DD */
   invoiceDate: string | null;
+  /** YYYY-MM-DD of the most recent payment, if any. */
+  paidDate: string | null;
 }
 
 /** Reminder tone, by days overdue: 1-7 friendly, 8-30 firm, 31+ final. */
@@ -63,6 +66,20 @@ export interface ReminderDraft {
   note: string;
   /** False when the AI skipped this invoice and a template was used instead. */
   aiDrafted: boolean;
+}
+
+export interface Insight {
+  title: string;
+  detail: string;
+  priority: "high" | "medium" | "low";
+  /** The client this insight is about, or null for business-wide insights. */
+  client: string | null;
+}
+
+export interface InsightsResponse {
+  insights: Insight[];
+  model: string;
+  generatedAt: string;
 }
 
 export interface AgentResponse {
