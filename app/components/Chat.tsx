@@ -11,6 +11,8 @@ interface UIMessage {
   content: string;
   /** Failed request notice; shown in chat but not sent back to the model. */
   isError?: boolean;
+  /** A rate-limit notice: shown in a calmer style than a real error. */
+  isNotice?: boolean;
   invoice?: InvoiceSummary;
   card?: { state: CardState; error?: string };
 }
@@ -30,6 +32,9 @@ const formatDate = (iso: string) =>
     day: "numeric",
     year: "numeric",
   });
+
+/** Thrown for HTTP 429 so the chat can show a calm notice instead of an error. */
+class RateLimitError extends Error {}
 
 let idCounter = 0;
 const newId = () => `m${Date.now()}-${idCounter++}`;
@@ -107,6 +112,9 @@ export default function Chat() {
         | (AgentResponse & { error?: string })
         | null;
 
+      if (res.status === 429) {
+        throw new RateLimitError(data?.error || "You're going a little fast. Please wait a minute and try again.");
+      }
       if (!res.ok || !data || data.error) {
         throw new Error(data?.error || `Request failed (${res.status}).`);
       }
@@ -128,7 +136,10 @@ export default function Chat() {
           : err instanceof Error
             ? err.message
             : "Something went wrong.";
-      setMessages((prev) => [...prev, { id: newId(), role: "assistant", content: msg, isError: true }]);
+      setMessages((prev) => [
+        ...prev,
+        { id: newId(), role: "assistant", content: msg, isError: true, isNotice: err instanceof RateLimitError },
+      ]);
     } finally {
       setLoading(false);
       inputRef.current?.focus();
@@ -215,8 +226,10 @@ export default function Chat() {
                 className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed sm:max-w-[75%] ${
                   m.role === "user"
                     ? "rounded-br-md bg-indigo-600 text-white"
-                    : m.isError
-                      ? "rounded-bl-md border border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+                    : m.isNotice
+                      ? "rounded-bl-md border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                      : m.isError
+                        ? "rounded-bl-md border border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
                       : "rounded-bl-md border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
                 }`}
               >

@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { rateLimit } from "@/lib/rate-limit";
 import { listInvoices } from "@/lib/paypal";
 import { getToday } from "@/lib/demo-clock";
 import { withAging } from "@/lib/invoices";
@@ -8,6 +9,8 @@ import { draftReminders } from "@/lib/reminders";
 /** Drafts reminders for overdue invoices. Optional body: { ids: string[] } to limit which ones. */
 export async function POST(request: Request) {
   await connection();
+  const limited = rateLimit(request, "reminders-draft");
+  if (limited) return limited;
   const started = Date.now();
 
   let ids: Set<string> | null = null;

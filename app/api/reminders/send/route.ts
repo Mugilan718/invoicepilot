@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { rateLimit } from "@/lib/rate-limit";
 import { getInvoice, normalizeInvoice, remindInvoice } from "@/lib/paypal";
 import { withAging } from "@/lib/invoices";
 import { MAX_NOTE_CHARS, MAX_SUBJECT_CHARS } from "@/lib/reminders";
@@ -8,6 +9,8 @@ const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 /** Sends a payment reminder. Body: { id, subject, note }. Only allowed for overdue invoices. */
 export async function POST(request: Request) {
   await connection();
+  const limited = rateLimit(request, "reminders-send");
+  if (limited) return limited;
 
   let body: Record<string, unknown>;
   try {

@@ -9,9 +9,18 @@ import InvoicesGrid, { toInvoiceRows, type InvoicesGridContext } from "./Invoice
 import ClientsGrid from "./ClientsGrid";
 import InsightsPanel from "./InsightsPanel";
 
+/** An API error that keeps the HTTP status (e.g. 429 for rate limits). */
+class HttpError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
-  if (!res.ok || !data || data.error) throw new Error(data?.error || `Request failed (${res.status}).`);
+  if (!res.ok || !data || data.error) throw new HttpError(data?.error || `Request failed (${res.status}).`, res.status);
   return data;
 }
 
@@ -22,6 +31,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  /** Error from a grid row action (e.g. sending a draft, or hitting the rate limit). */
+  const [actionError, setActionError] = useState<{ message: string; notice: boolean } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,9 +75,19 @@ export default function Dashboard() {
     () => ({
       onDraftReminder: (id) => router.push(`/follow-ups?invoice=${encodeURIComponent(id)}`),
       onSendDraft: async (id) => {
-        const res = await fetch(`/api/invoices/${encodeURIComponent(id)}/send`, { method: "POST" });
-        await readJson<{ success: boolean }>(res);
-        reload();
+        setActionError(null);
+        try {
+          const res = await fetch(`/api/invoices/${encodeURIComponent(id)}/send`, { method: "POST" });
+          await readJson<{ success: boolean }>(res);
+          reload();
+        } catch (err) {
+          // Show it above the grid too; the cell itself only has room for "Retry send".
+          setActionError({
+            message: err instanceof Error ? err.message : "Sending failed.",
+            notice: err instanceof HttpError && err.status === 429,
+          });
+          throw err;
+        }
       },
     }),
     [router, reload]
@@ -150,6 +171,26 @@ export default function Dashboard() {
         <GridProvider>
           <section className="flex flex-col gap-3">
             <SectionTitle title="All invoices" hint="Sort, filter from any column header, or search. Overdue rows are highlighted." />
+            {actionError && (
+              <div
+                role="alert"
+                className={`flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${
+                  actionError.notice
+                    ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                    : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+                }`}
+              >
+                <span>{actionError.message}</span>
+                <button
+                  type="button"
+                  onClick={() => setActionError(null)}
+                  aria-label="Dismiss"
+                  className="shrink-0 rounded px-1 font-medium opacity-70 hover:opacity-100"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             {data ? (
               <InvoicesGrid rows={rows} context={gridContext} today={data.today} />
             ) : (

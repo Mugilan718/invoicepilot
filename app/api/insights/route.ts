@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { rateLimit } from "@/lib/rate-limit";
 import { listInvoices } from "@/lib/paypal";
 import { getToday } from "@/lib/demo-clock";
 import { withAging } from "@/lib/invoices";
@@ -7,8 +8,10 @@ import { generateInsights } from "@/lib/insights";
 import type { InsightsResponse } from "@/lib/types";
 
 /** Generates 3-4 AI cash-flow insights from current invoice stats (one Gemini call). */
-export async function POST() {
+export async function POST(request: Request) {
   await connection();
+  const limited = rateLimit(request, "insights");
+  if (limited) return limited;
   const started = Date.now();
   try {
     const today = getToday();

@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { rateLimit } from "@/lib/rate-limit";
 import { AgentError, runAgent } from "@/lib/agent";
 import type { ChatMessage } from "@/lib/types";
 
@@ -19,6 +20,8 @@ function parseMessages(body: unknown): ChatMessage[] | null {
 
 export async function POST(request: Request) {
   await connection();
+  const limited = rateLimit(request, "agent");
+  if (limited) return limited;
 
   let body: unknown;
   try {
