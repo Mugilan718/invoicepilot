@@ -1,0 +1,5 @@
+[
+  { "name": "Acme Corp", "email": "{{PAYPAL_TEST_CUSTOMER_EMAIL}}" },
+  { "name": "Bloom Bakery", "email": "{{PAYPAL_TEST_CUSTOMER_EMAIL}}" },
+  { "name": "Nova Studio", "email": "{{PAYPAL_TEST_CUSTOMER_EMAIL}}" }
+]

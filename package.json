@@ -6,9 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seed.ts"
   },
   "dependencies": {
+    "@google/genai": "^3.0.0",
     "next": "16.4.5",
     "react": "19.3.0",
     "react-dom": "19.3.0"
