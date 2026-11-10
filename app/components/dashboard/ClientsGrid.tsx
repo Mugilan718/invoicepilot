@@ -48,7 +48,7 @@ export default function ClientsGrid({ clients }: { clients: ClientStats[] }) {
         flex: 1.2,
         cellRenderer: ReliabilityCell,
         filter: "agTextColumnFilter",
-        tooltipValueGetter: (p) => (p.data && !p.data.isTotal ? historyTooltip(p.data) : undefined),
+        tooltip: (p) => (p.data && !p.data.isTotal ? historyTooltip(p.data) : undefined),
         comparator: (a: Reliability, b: Reliability) => (RELIABILITY_RANK[a] ?? 9) - (RELIABILITY_RANK[b] ?? 9),
       },
       { field: "invoiceCount", headerName: "Invoices", type: "rightAligned", minWidth: 96, flex: 0.8, filter: "agNumberColumnFilter" },

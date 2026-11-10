@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seed.ts",
-    "seed:history": "npm run seed -- --history"
+    "seed:history": "npm run seed -- --history",
+    "demo:video": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON demo/run.ts"
   },
   "dependencies": {
     "@google/genai": "^3.0.0",
@@ -28,6 +29,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
+    "ffmpeg-static": "^5.3.0",
+    "playwright": "^1.65.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

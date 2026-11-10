@@ -218,7 +218,7 @@ PAYPAL_TEST_CUSTOMER_EMAIL=your_us_personal_sandbox_email
 # Gemini
 GEMINI_API_KEY=your_gemini_api_key
 # Primary model (optional; defaults to gemini-3.8-flash)
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.5-flash
 # Optional comma-separated fallbacks, tried in order if the primary is busy
 GEMINI_FALLBACK_MODELS=gemini-3.5-flash-lite,gemini-3.1-flash-lite
 

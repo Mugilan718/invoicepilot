@@ -1,0 +1,36 @@
+{
+  "voice": "Sulafat",
+  "style": "Say in a warm, friendly, confident voice, clearly and at a natural conversational pace, like a product demo narrator",
+  "sections": [
+    {
+      "id": "1-problem",
+      "screen": "Dashboard with overdue rows",
+      "text": "Freelancers do the work, and then they do a second job: chasing payment. Late invoices mean hours of awkward follow-up emails and a cash flow you can't predict. This is InvoicePilot."
+    },
+    {
+      "id": "2-intro",
+      "screen": "Chat page",
+      "text": "InvoicePilot is an AI agent that handles getting paid, built on PayPal's Invoicing API and Google Gemini."
+    },
+    {
+      "id": "3-chat",
+      "screen": "Type the request, wait for the card, click Approve & Send",
+      "text": "Creating an invoice is as simple as saying it. Bill Acme Corp twelve hundred dollars for logo design, due in fourteen days. Gemini understands the request, works out the due date, and creates a real draft invoice in PayPal. Here's the key design choice: the AI can only draft. Nothing reaches a client until I review it and click Approve and Send. And PayPal has sent the invoice."
+    },
+    {
+      "id": "4-followups",
+      "screen": "Follow-ups: Draft reminders with AI, scroll through them, send one",
+      "text": "Now the painful part: chasing. The Follow-ups page lists every overdue invoice from PayPal, color-coded by urgency. One click, and Gemini drafts a reminder for each one: friendly when it's a few days late, firm but courteous at forty days. Any message can be edited, then sent through PayPal's reminder API."
+    },
+    {
+      "id": "5-dashboard",
+      "screen": "Dashboard: status chip, Generate insights, insights and clients grid",
+      "text": "The dashboard gives the full picture. It's built with AG Grid: live totals, filters, highlighted overdue invoices, and a reliability rating for each client, calculated from real payment history. And Generate Insights turns those numbers into specific actions."
+    },
+    {
+      "id": "6-closing",
+      "screen": "Closing title card with app name, live URL and repo URL",
+      "text": "Under the hood: Next.js on Render, Gemini function calling with server-side validation and model fallback, and the PayPal Invoicing API. Every AI action is checked by the server, and client emails never reach the model. InvoicePilot gives freelancers their time back, and gets them paid faster."
+    }
+  ]
+}

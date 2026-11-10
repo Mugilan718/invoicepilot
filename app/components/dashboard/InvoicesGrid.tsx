@@ -191,7 +191,7 @@ export default function InvoicesGrid({
         flex: 1.4,
         minWidth: 140,
         filter: "agTextColumnFilter",
-        tooltipValueGetter: (p) => (p.data?.isTotal ? undefined : (p.data?.recipientEmail ?? undefined)),
+        tooltip: (p) => (p.data?.isTotal ? undefined : (p.data?.recipientEmail ?? undefined)),
       },
       {
         field: "statusLabel",
